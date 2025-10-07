@@ -1,6 +1,17 @@
 # DocCopy
 
-A Go program that copies Docker container state between containers.
+DocCopy is one of the experimental projects that utilize an interesting runc feature. `runc` which is a lower level container runtime. To provide more context on this project and why this is interesting - whenever we run `docker exec` command - the request is passed to `containerd` which then calls runc through shim. 
+If we look closely at the runc implementation - https://github.com/opencontainers/runc/blob/main/exec.go#L188, we pass in the flag "CT_ACT_RUN" - basically we are running a new process. 
+Now for the trick - `runc` relies on a `state.json` file which helps to identify the container where we want to exec. 
+State file has all the information about the root file system, capabilities, seccomp values, namespace symlink path. It is located at the path `/var/run/docker/runtime-runc/moby/<container-id>/state.json`.
+
+https://github.com/opencontainers/runc/blob/main/libcontainer/factory_linux.go#L21
+
+
+## What we are doing with DocCopy
+This is a simple tool which basically creates a clone for your container by using a trick where we pass in and copy the `state.json` file of the given container to a newly started lightweight alpine container with the name `cloned-cont`.
+What you will observe on running this script is a new running container which is a copy of your given container and any changes you make will reflect in the existing running container. Any process you start in either of the containers will reflect in the other.
+
 
 ## Prerequisites
 
@@ -13,7 +24,7 @@ A Go program that copies Docker container state between containers.
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd doccopt
+cd doccopy
 ```
 
 2. Download dependencies:
@@ -25,12 +36,12 @@ go mod tidy
 
 1. Build the program:
 ```bash
-go build -o doccopt main.go
+go build -o doccopy main.go
 ```
 
 2. Run with sudo (required for Docker state access):
 ```bash
-sudo ./doccopt
+sudo ./doccopy
 ```
 
 3. Enter a container ID when prompted
