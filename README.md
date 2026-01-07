@@ -23,7 +23,7 @@ What you will observe on running this script is a new running container which is
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/rtvkiz/doccopy.git
 cd doccopy
 ```
 
