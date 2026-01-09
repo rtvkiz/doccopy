@@ -45,15 +45,24 @@ func getStateJSON(containerID string) ([]byte, error) {
 }
 
 // createAndStartContainer creates a new container from an image and starts it
-func createAndStartContainer(cli *client.Client, imageName string, containerName string) (string, error) {
+// If sourceContainerID is provided, the new container will share namespaces with the source
+func createAndStartContainer(cli *client.Client, imageName string, containerName string, sourceContainerID string) (string, error) {
 	ctx := context.Background()
 
-	HostConfig := &container.HostConfig{
+	hostConfig := &container.HostConfig{
 		AutoRemove: false,
 	}
 
+	// If source container ID is provided, share namespaces with it
+	if sourceContainerID != "" {
+		hostConfig.PidMode = container.PidMode("container:" + sourceContainerID)
+		hostConfig.NetworkMode = container.NetworkMode("container:" + sourceContainerID)
+		hostConfig.IpcMode = container.IpcMode("container:" + sourceContainerID)
+		hostConfig.UTSMode = container.UTSMode("container:" + sourceContainerID)
+	}
+
 	config := &container.Config{
-		Image:        "alpine",
+		Image:        imageName,
 		Cmd:          []string{"/bin/sh", "-c", "sleep infinity"}, // this is to Keep container running
 		AttachStdin:  false,
 		AttachStdout: false,
@@ -64,7 +73,7 @@ func createAndStartContainer(cli *client.Client, imageName string, containerName
 	}
 
 	// Create the container
-	resp, err := cli.ContainerCreate(ctx, config, HostConfig, nil, nil, containerName)
+	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %v", err)
 	}
@@ -132,8 +141,8 @@ func main() {
 		fmt.Printf("State.json file size: %d bytes\n", len(stateData))
 	}
 
-	// Create and start Alpine container named "copy" in background
-	copyContainerID, err := createAndStartContainer(cli, "alpine", "cloned-cont")
+	// Create and start Alpine container named "copy" in background, sharing namespaces with source
+	copyContainerID, err := createAndStartContainer(cli, "alpine", "cloned-cont", containerInfo.ID)
 	if err != nil {
 		log.Printf("Failed to create copy container: %v", err)
 	} else {
