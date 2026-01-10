@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -46,7 +48,7 @@ func getStateJSON(containerID string) ([]byte, error) {
 
 // createAndStartContainer creates a new container from an image and starts it
 // If sourceContainerID is provided, the new container will share namespaces with the source
-func createAndStartContainer(cli *client.Client, imageName string, containerName string, sourceContainerID string) (string, error) {
+func createAndStartContainer(cli *client.Client, imageName string, containerName string, sourceContainerID string, cmd []string, interactive bool) (string, error) {
 	ctx := context.Background()
 
 	hostConfig := &container.HostConfig{
@@ -62,13 +64,13 @@ func createAndStartContainer(cli *client.Client, imageName string, containerName
 
 	config := &container.Config{
 		Image:        imageName,
-		Cmd:          []string{"/bin/sh", "-c", "sleep infinity"}, // this is to Keep container running
-		AttachStdin:  false,
-		AttachStdout: false,
-		AttachStderr: false,
-		OpenStdin:    false,
+		Cmd:          cmd,
+		AttachStdin:  interactive,
+		AttachStdout: interactive,
+		AttachStderr: interactive,
+		OpenStdin:    interactive,
 		StdinOnce:    false,
-		Tty:          false, // Set to false for true detached mode
+		Tty:          interactive,
 	}
 
 	// Create the container
@@ -111,15 +113,28 @@ func copyStateJSON(cli *client.Client, source string, destination string, stateJ
 	return nil
 }
 func main() {
+	// Command line flags
+	name := flag.String("name", "cloned-cont", "Name for the new container")
+	image := flag.String("image", "alpine", "Image to use for the new container")
+	cmdStr := flag.String("cmd", "sleep infinity", "Command to run in the container")
+	interactive := flag.Bool("it", false, "Run container in interactive mode with TTY")
+	target := flag.String("target", "", "Target container ID to clone namespaces from")
+	flag.Parse()
+
+	// If target not provided via flag, check positional arg or prompt
+	containerID := *target
+	if containerID == "" && flag.NArg() > 0 {
+		containerID = flag.Arg(0)
+	}
+	if containerID == "" {
+		fmt.Print("Enter container ID: ")
+		fmt.Scan(&containerID)
+	}
+
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.45"))
 	if err != nil {
 		panic(err)
 	}
-
-	// Example usage: get container by ID
-	var containerID string
-	fmt.Print("Enter container ID: ")
-	fmt.Scan(&containerID)
 
 	containerInfo, err := getContainerFromID(cli, containerID)
 	if err != nil {
@@ -132,29 +147,20 @@ func main() {
 	fmt.Printf("Container State: %s\n", containerInfo.State.Status)
 	fmt.Printf("Container Image: %s\n", containerInfo.Config.Image)
 
-	// Fetch the state.json file
-	stateData, err := getStateJSON(containerInfo.ID)
-	if err != nil {
-		log.Printf("Warning: Could not fetch state.json: %v", err)
-	} else {
-		fmt.Printf("State.json file size: %d bytes\n", len(stateData))
-	}
+	// Parse command string into slice
+	cmd := parseCommand(*cmdStr)
 
-	// Create and start Alpine container named "copy" in background, sharing namespaces with source
-	copyContainerID, err := createAndStartContainer(cli, "alpine", "cloned-cont", containerInfo.ID)
+	// Create and start container sharing namespaces with source
+	copyContainerID, err := createAndStartContainer(cli, *image, *name, containerInfo.ID, cmd, *interactive)
 	if err != nil {
-		log.Printf("Failed to create copy container: %v", err)
-	} else {
-		fmt.Printf("Successfully created and started 'copy' container: %s\n", copyContainerID)
-
-		// Copy state.json from source container to destination container
-		if len(stateData) > 0 {
-			err = copyStateJSON(cli, containerInfo.ID, copyContainerID, stateData)
-			if err != nil {
-				log.Printf("Failed to copy state.json: %v", err)
-			} else {
-				fmt.Println("Successfully copied state.json between containers!")
-			}
-		}
+		log.Fatalf("Failed to create container: %v", err)
 	}
+	fmt.Printf("Successfully created container '%s': %s\n", *name, copyContainerID)
+}
+
+func parseCommand(cmdStr string) []string {
+	if cmdStr == "" {
+		return []string{"/bin/sh", "-c", "sleep infinity"}
+	}
+	return strings.Fields(cmdStr)
 }

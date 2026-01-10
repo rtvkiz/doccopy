@@ -41,18 +41,40 @@ go build -o doccopy main.go
 
 2. Run with sudo (required for Docker state access):
 ```bash
-sudo ./doccopy
+sudo ./doccopy [flags] [target-container-id]
 ```
 
-3. Enter a container ID when prompted
+### Command Line Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-name` | `cloned-cont` | Name for the new container |
+| `-image` | `alpine` | Image to use for the new container |
+| `-cmd` | `sleep infinity` | Command to run in the container |
+| `-it` | `false` | Run container in interactive mode with TTY |
+| `-target` | | Target container ID to clone namespaces from |
+
+### Examples
+
+```bash
+# Basic usage - prompts for container ID
+sudo ./doccopy
+
+# Specify target container as positional argument
+sudo ./doccopy e2a04deed1c2
+
+# Create a sidecar container with interactive shell
+sudo ./doccopy -name sidecar -cmd "/bin/sh" -it -target e2a04deed1c2
+
+# Use busybox image instead of alpine
+sudo ./doccopy -name mycontainer -image busybox -target e2a04deed1c2
+```
 
 ## What it does
 
 - Inspects the specified Docker container
-- Reads the container's state.json file
-- Creates a new Alpine container named "cloned-cont"
-- Copies the state from the original container to the new one
-- Starts the cloned container
+- Creates a new container sharing PID, network, and IPC namespaces with the target
+- The new container can see processes, network interfaces, and IPC resources of the target
 
 ## Note
 
