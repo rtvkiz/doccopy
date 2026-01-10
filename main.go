@@ -58,7 +58,6 @@ func createAndStartContainer(cli *client.Client, imageName string, containerName
 		hostConfig.PidMode = container.PidMode("container:" + sourceContainerID)
 		hostConfig.NetworkMode = container.NetworkMode("container:" + sourceContainerID)
 		hostConfig.IpcMode = container.IpcMode("container:" + sourceContainerID)
-		hostConfig.UTSMode = container.UTSMode("container:" + sourceContainerID)
 	}
 
 	config := &container.Config{
